@@ -1,0 +1,64 @@
+diff -urN gcc-2.95.3/gcc/config/s390/s390.c gcc-2.95.3-s390/gcc/config/s390/s390.c
+--- gcc-2.95.3/gcc/config/s390/s390.c	Wed Mar  6 19:59:32 2002
++++ gcc-2.95.3-s390/gcc/config/s390/s390.c	Wed Mar  6 19:56:21 2002
+@@ -1353,7 +1353,7 @@
+   struct s390_address ad;
+ 
+   if (!s390_decompose_address (addr, &ad, TRUE))
+-    output_operand_lossage ("Cannot decompose address.\n");
++    output_operand_lossage ("Cannot decompose address.");
+  
+   if (ad.disp)
+     s390_output_symbolic_const (file, ad.disp);
+@@ -2322,7 +2322,7 @@
+ 	{
+ 	  l = dwarf2out_cfi_label ();
+ 	  dwarf2out_def_cfa (l, STACK_POINTER_REGNUM, STACK_POINTER_OFFSET);
+-	  for (j = i; j <= 15; j++)
++	  for (j = (i < 6 ? 6 : i); j <= 15; j++)
+ 	    dwarf2out_reg_save (l, j, (TARGET_64BIT ? (j-20) : (j-24)) *
+ 				UNITS_PER_WORD);
+ 	  if (regs_ever_live[18])
+diff -urN gcc-2.95.3/gcc/config/s390/s390.md gcc-2.95.3-s390/gcc/config/s390/s390.md
+--- gcc-2.95.3/gcc/config/s390/s390.md	Wed Mar  6 19:59:32 2002
++++ gcc-2.95.3-s390/gcc/config/s390/s390.md	Mon Dec 10 15:34:19 2001
+@@ -227,7 +227,7 @@
+ 	                  (match_operand:DI 1 "const1_operand" "")
+                           (match_operand:DI 2 "immediate_operand"  "I"))
+                  (const_int 0)))]
+-  "s390_match_ccmode(insn, CCTmode) &&
++  "s390_match_ccmode(insn, CCTmode) && TARGET_64BIT &&
+    INTVAL(operands[2]) >= 0 && INTVAL(operands[2]) < 64"
+   "*
+ {
+@@ -258,7 +258,7 @@
+         (compare (and:DI (match_operand:DI 0 "register_operand" "%d")
+                          (match_operand:DI 1 "tmxx_operand"  "Lm"))
+                  (const_int 0)))]
+-  "s390_match_ccmode(insn, CCTmode)"
++  "s390_match_ccmode(insn, CCTmode) && TARGET_64BIT"
+   "*
+ {
+   unsigned HOST_WIDEST_INT i;
+@@ -3401,7 +3401,7 @@
+ (define_insn "mulsi_6432"
+    [(set (match_operand:DI 0 "register_operand" "=d,d")
+          (mult:DI (sign_extend:DI 
+-	            (subreg:SI (match_operand:DI 1 "register_operand" "0,0") 1))
++	            (truncate:SI (match_operand:DI 1 "register_operand" "0,0")))
+                   (sign_extend:DI
+ 	            (match_operand:SI 2 "general_operand" "d,m"))))
+     (clobber (reg:CC 33))]
+diff -urN gcc-2.95.3/gcc/loop.c gcc-2.95.3-s390/gcc/loop.c
+--- gcc-2.95.3/gcc/loop.c	Thu Jan 25 15:03:18 2001
++++ gcc-2.95.3-s390/gcc/loop.c	Mon Dec  3 19:54:08 2001
+@@ -4089,7 +4089,8 @@
+ 	    }
+ 	
+ 	  /* Now, can we transform this biv into a giv?  */
+-	  if (bl2
++          /* Disabled because it breaks on non-cc0 targets ... */
++	  if (0 && bl2
+ 	      && bl2->biv_count == 1
+ 	      && rtx_equal_p (increment,
+ 			      biv_total_increment (bl2, loop_start, loop_end))

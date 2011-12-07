@@ -1,0 +1,61 @@
+On Tue, Aug 28, 2001 at 01:57:32AM -0400, Crutcher Dunnavant wrote:
+> $ (cat > /dev/null ; ./test_c) < test.c
+> really = 327, stdio = 327
+> 
+> $ (cat > /dev/null ; ./test_+) < test.c
+> really = 327, stdio = 0
+
+Here is a fix (glibc initializes _offset (and _old_offset) fiels in _IO_FILE
+with -1 for stdin, stdout, stderr since 1998 and this patch makes libstdc++ do the
+same).
+
+2001-08-28  Jakub Jelinek  <jakub@redhat.com>
+
+	* libioP.h (FILEBUF_LITERAL): Set _offset and possibly _old_offset
+	fields to _IO_pos_BAD, not 0.
+
+--- libio/libioP.h.jj	Sun Jul  2 10:37:33 2000
++++ libio/libioP.h	Tue Aug 28 13:11:08 2001
+@@ -578,16 +578,33 @@ extern int _IO_vscanf __P ((const char *
+ #endif
+ 
+ #ifdef _IO_MTSAFE_IO
++# if defined(_G_IO_IO_FILE_VERSION) && _G_IO_IO_FILE_VERSION == 0x20001
+ /* check following! */
+-# define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
++#  define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
+        { _IO_MAGIC+_IO_LINKED+_IO_IS_FILEBUF+FLAGS, \
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CHAIN, FD, \
+-	   0, 0, 0, 0, { 0 }, &_IO_stdfile_##FD##_lock }
++	   0, _IO_pos_BAD, 0, 0, { 0 }, &_IO_stdfile_##FD##_lock, _IO_pos_BAD }
++# else
++/* check following! */
++#  define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
++       { _IO_MAGIC+_IO_LINKED+_IO_IS_FILEBUF+FLAGS, \
++         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CHAIN, FD, \
++	   0, _IO_pos_BAD, 0, 0, { 0 }, &_IO_stdfile_##FD##_lock }
++# endif
+ #else
++# if defined(_G_IO_IO_FILE_VERSION) && _G_IO_IO_FILE_VERSION == 0x20001
++/* check following! */
++#  define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
++       { _IO_MAGIC+_IO_LINKED+_IO_IS_FILEBUF+FLAGS, \
++	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CHAIN, FD, \
++	   0, _IO_pos_BAD, 0, 0, { 0 }, 0, _IO_pos_BAD }
++# else
+ /* check following! */
+-# define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
++#  define FILEBUF_LITERAL(CHAIN, FLAGS, FD) \
+        { _IO_MAGIC+_IO_LINKED+_IO_IS_FILEBUF+FLAGS, \
+-	   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CHAIN, FD }
++	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, CHAIN, FD, \
++	   0, _IO_pos_BAD }
++# endif
+ #endif
+ 
+ /* VTABLE_LABEL defines NAME as of the CLASS class.
+
+
+	Jakub
+
+

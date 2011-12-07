@@ -1,0 +1,50 @@
+--- gcc/config/s390/linux64.h.jj	Mon Sep  8 08:19:37 2003
++++ gcc/config/s390/linux64.h	Mon Sep  8 08:23:20 2003
+@@ -46,16 +46,17 @@ Boston, MA 02111-1307, USA.  */
+     %{!ibcs: \
+       %{!static: \
+ 	%{rdynamic:-export-dynamic} \
+-	%{!dynamic-linker:-dynamic-linker /lib/ld64.so.1 \
++	%{!dynamic-linker:-dynamic-linker /lib64/ld64.so.1 \
+         -rpath-link=/usr/local/s390x-ibm-linux/lib}} \
+ 	%{static:-static}}}"
+ #else
+ #define LINK_SPEC "-m elf64_s390 %{shared:-shared} \
++  -L/usr/lib64 -L/lib64 \
+   %{!shared: \
+     %{!ibcs: \
+       %{!static: \
+ 	%{rdynamic:-export-dynamic} \
+-	%{!dynamic-linker:-dynamic-linker /lib/ld64.so.1}} \
++	%{!dynamic-linker:-dynamic-linker /lib64/ld64.so.1}} \
+ 	%{static:-static}}}"
+ #endif
+ 
+@@ -79,4 +80,27 @@ Boston, MA 02111-1307, USA.  */
+   0, 0, 0, 0, 					\
+   1, 1 }
+ 
++/* Provide a STARTFILE_SPEC appropriate for GNU/Linux.  Here we add
++   the GNU/Linux magical crtbegin.o file (see crtstuff.c) which
++   provides part of the support for getting C++ file-scope static
++   object constructed before entering `main'. */
++
++#undef  STARTFILE_SPEC
++#define STARTFILE_SPEC \
++  "%{!shared: \
++     %{pg:/usr/lib64/gcrt1.o%s} %{!pg:%{p:/usr/lib64/gcrt1.o%s} \
++                       %{!p:%{profile:/usr/lib64/gcrt1.o%s} \
++                         %{!profile:/usr/lib64/crt1.o%s}}}} \
++   /usr/lib64/crti.o%s %{!shared:crtbegin.o%s} %{shared:crtbeginS.o%s}"
++
++/* Provide a ENDFILE_SPEC appropriate for GNU/Linux.  Here we tack on
++   the GNU/Linux magical crtend.o file (see crtstuff.c) which
++   provides part of the support for getting C++ file-scope static
++   object constructed before entering `main', followed by a normal
++   GNU/Linux "finalizer" file, `crtn.o'.  */
++
++#undef  ENDFILE_SPEC
++#define ENDFILE_SPEC \
++  "%{!shared:crtend.o%s} %{shared:crtendS.o%s} /usr/lib64/crtn.o%s"
++
+ #endif

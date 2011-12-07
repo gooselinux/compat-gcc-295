@@ -1,0 +1,363 @@
+diff -urN gcc-2.95.3/gcc/config/s390/s390-protos.h gcc-2.95.3-s390/gcc/config/s390/s390-protos.h
+--- gcc-2.95.3/gcc/config/s390/s390-protos.h	Wed Oct 10 19:03:19 2001
++++ gcc-2.95.3-s390/gcc/config/s390/s390-protos.h	Sat Sep  8 00:44:35 2001
+@@ -39,6 +39,7 @@
+ extern int dead_p PARAMS ((rtx, rtx));
+ extern void print_operand PARAMS ((FILE *, rtx, char));
+ extern void print_operand_address PARAMS ((FILE *, rtx));
++extern int legitimate_la_operand_p PARAMS ((rtx));
+ extern int legitimate_pic_operand_p PARAMS ((rtx));
+ extern int legitimate_constant_p PARAMS ((rtx));
+ 
+diff -urN gcc-2.95.3/gcc/config/s390/s390.c gcc-2.95.3-s390/gcc/config/s390/s390.c
+--- gcc-2.95.3/gcc/config/s390/s390.c	Wed Oct 10 19:03:21 2001
++++ gcc-2.95.3-s390/gcc/config/s390/s390.c	Mon Oct  8 18:27:17 2001
+@@ -799,6 +799,40 @@
+   return s390_decompose_address (addr, NULL, strict);
+ }
+ 
++/* Return 1 if OP is a valid operand for the LA instruction.
++   In 31-bit, we need to prove that the result is used as an
++   address, as LA performs only a 31-bit addition.  */
++
++int
++legitimate_la_operand_p (op)
++     register rtx op;
++{
++  struct s390_address addr;
++  if (!s390_decompose_address (op, &addr, FALSE))
++    return FALSE;
++
++  if (TARGET_64BIT)
++    return TRUE;
++
++  /* Use of the base or stack pointer implies address.  */
++
++  if (addr.base && GET_CODE (addr.base) == REG)
++    {
++      if (REGNO (addr.base) == BASE_REGISTER
++          || REGNO (addr.base) == STACK_POINTER_REGNUM)
++        return TRUE;
++    }
++
++  if (addr.indx && GET_CODE (addr.indx) == REG)
++    {
++      if (REGNO (addr.indx) == BASE_REGISTER
++          || REGNO (addr.indx) == STACK_POINTER_REGNUM)
++        return TRUE;
++    }
++
++  return FALSE;
++}
++
+ /* Return a legitimate reference for ORIG (an address) using the
+    register REG.  If REG is 0, a new pseudo is generated.
+ 
+@@ -1116,8 +1150,47 @@
+      register rtx oldx ATTRIBUTE_UNUSED;
+      enum machine_mode mode;
+ {
+-  if (flag_pic && SYMBOLIC_CONST (x))
+-    return legitimize_pic_address (x, 0);
++  rtx constant_term = const0_rtx;
++
++  if (flag_pic)
++    {
++      if (SYMBOLIC_CONST (x)
++          || (GET_CODE (x) == PLUS 
++              && (SYMBOLIC_CONST (XEXP (x, 0)) 
++                  || SYMBOLIC_CONST (XEXP (x, 1)))))
++	  x = legitimize_pic_address (x, 0);
++
++      if (legitimate_address_p (mode, x, FALSE))
++	return x;
++    }
++
++  x = eliminate_constant_term (x, &constant_term);
++
++  if (GET_CODE (x) == PLUS)
++    {
++      if (GET_CODE (XEXP (x, 0)) == REG)
++	{
++	  register rtx temp = gen_reg_rtx (Pmode);
++	  register rtx val  = force_operand (XEXP (x, 1), temp);
++	  if (val != temp)
++	    emit_move_insn (temp, val);
++
++	  x = gen_rtx_PLUS (Pmode, XEXP (x, 0), temp);
++	}
++
++      else if (GET_CODE (XEXP (x, 1)) == REG)
++	{
++	  register rtx temp = gen_reg_rtx (Pmode);
++	  register rtx val  = force_operand (XEXP (x, 0), temp);
++	  if (val != temp)
++	    emit_move_insn (temp, val);
++
++	  x = gen_rtx_PLUS (Pmode, temp, XEXP (x, 1));
++	}
++    }
++
++  if (constant_term != const0_rtx)
++    x = gen_rtx_PLUS (Pmode, x, constant_term);
+ 
+   return x;
+ }
+@@ -1488,13 +1561,6 @@
+   if (recog_memoized (insn) < 0 || recog_memoized (dep_insn) < 0)
+     return cost;
+ 
+-  /* If cost equal 1 nothing needs to be checked. */
+-
+-  if (cost == 1)
+-    {
+-      return cost;
+-    }
+-
+   dep_rtx = PATTERN (dep_insn);
+ 
+   if (GET_CODE (dep_rtx) == SET)
+@@ -1508,7 +1574,7 @@
+ 	      debug_rtx (dep_insn);
+ 	      debug_rtx (insn);
+ 	    }
+-	  return cost;
++	  return cost + 4;
+ 	}
+     }
+ 
+@@ -1526,13 +1592,13 @@
+ 		  debug_rtx (dep_insn);
+ 		  debug_rtx (insn);
+ 		}
+-	      return cost;
++	      return cost + 4;
+ 	    }
+ 	}
+     }
+ 
+   /* default cost.  */
+-  return 1;
++  return cost;
+ }
+ 
+ /* Pool concept for Linux 390:
+diff -urN gcc-2.95.3/gcc/config/s390/s390.h gcc-2.95.3-s390/gcc/config/s390/s390.h
+--- gcc-2.95.3/gcc/config/s390/s390.h	Wed Oct 10 19:03:19 2001
++++ gcc-2.95.3-s390/gcc/config/s390/s390.h	Mon Oct  8 18:32:09 2001
+@@ -832,7 +832,6 @@
+     }								\
+   else								\
+     {  								\
+-      output_asm_insn ("l     14,4(15)", s390_profile);		\
+       s390_pool_count = 0;                             		\
+       output_asm_insn ("st    14,4(15)", s390_profile);		\
+       output_asm_insn ("l     14,%4", s390_profile);		\
+diff -urN gcc-2.95.3/gcc/config/s390/s390.md gcc-2.95.3-s390/gcc/config/s390/s390.md
+--- gcc-2.95.3/gcc/config/s390/s390.md	Wed Oct 10 19:03:19 2001
++++ gcc-2.95.3-s390/gcc/config/s390/s390.md	Sat Sep 29 22:03:30 2001
+@@ -77,50 +77,21 @@
+ (define_attr "type" "set,xset,la" (const_string "xset"))
+ 
+ ;
+-; Set operations changing a target register, which could be used for
+-; address generation. Adjust cost will check, if realy applicable. 
++; Dummy function unit.  We only care for the cycle count.
++; Everthing else is done by ADJUST_COST.
+ ;
+ 
+ (define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "set")
+-       (eq_attr "cycle" "1"))
+-  5 1 [(eq_attr "atype" "mem")] )
++  (eq_attr "cycle" "1") 1 1)
+ 
+ (define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "set")
+-       (eq_attr "cycle" "2")) 5 2)
++  (eq_attr "cycle" "2") 2 2)
+ 
+ (define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "set")
+-       (eq_attr "cycle" "3")) 5 3)
++  (eq_attr "cycle" "3") 3 3)
+ 
+ (define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "set")
+-       (eq_attr "cycle" "n")) 5 4)
+-
+-(define_function_unit "memory" 1 0
+-  (eq_attr "type" "la") 2 1)
+-
+-;
+-; xset insns, which don't set any valid address register.
+-; Only the issue delay matters.
+-; 
+-
+-(define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "xset")
+-       (eq_attr "cycle" "1")) 1 1)
+-
+-(define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "xset")
+-       (eq_attr "cycle" "2")) 1 2)
+-
+-(define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "xset")
+-       (eq_attr "cycle" "3")) 1 3)
+-
+-(define_function_unit "memory" 1 0
+-  (and (eq_attr "type" "xset")
+-       (eq_attr "cycle" "n")) 1 4)
++  (eq_attr "cycle" "n") 4 4)
+ 
+ ; Operand type. Used to default length attribute values
+ 
+@@ -387,7 +358,7 @@
+ 
+ (define_insn "*cmpsi_cct"
+   [(set (reg 33)
+-        (compare (zero_extract:SI (match_operand:SI 0 "register_operand" "%d")
++        (compare (zero_extract:SI (match_operand:SI 0 "register_operand" "d")
+ 	                  (match_operand:SI 1 "const1_operand" "")
+                           (match_operand:SI 2 "immediate_operand"  "I"))
+                  (const_int 0)))]
+@@ -900,6 +871,19 @@
+ 
+   if (flag_pic && SYMBOLIC_CONST (operands[1]))
+     emit_pic_move (operands, SImode);
++
++  /* expr.c tries to load an effective address using 
++     force_reg.  This fails because we don't have a 
++     generic load_address pattern.  Convert the move
++     to a proper arithmetic operation instead, unless
++     it is guaranteed to be OK.  */
++  if (GET_CODE (operands[1]) == PLUS
++      && !legitimate_la_operand_p (operands[1]))
++    {
++      operands[1] = force_operand (operands[1], operands[0]);
++      if (operands[1] == operands[0])
++        DONE;
++    }
+ }")
+ 
+ (define_insn "*movsi"
+@@ -2973,35 +2957,6 @@
+    (set_attr "atype"    "mem")
+    (set_attr "type"     "la")])
+ 
+-(define_insn "*addaddr_picR"
+-  [(set (match_operand:SI 0 "register_operand" "=d")
+-        (plus:SI (match_operand:SI 1 "register_operand" "a")
+-                 (unspec:SI [(match_operand:SI 2 "register_operand" "a")] 101)))]
+-  ""
+-  "la\\t%0,0(%1,%2)"
+-  [(set_attr "op_type"  "RX")
+-   (set_attr "atype"    "mem")
+-   (set_attr "type"     "la")])
+-
+-(define_insn "*addaddr_picL"
+-  [(set (match_operand:SI 0 "register_operand" "=d")
+-        (plus:SI (unspec:SI [(match_operand:SI 2 "register_operand" "a")] 101)
+-                 (match_operand:SI 1 "register_operand" "a")))]
+-  ""
+-  "la\\t%0,0(%1,%2)"
+-  [(set_attr "op_type"  "RX")
+-   (set_attr "atype"    "mem")
+-   (set_attr "type"     "la")])
+-
+-(define_insn "*addaddr_picN"
+-  [(set (match_operand:SI 0 "register_operand" "=d")
+-        (unspec:SI [(match_operand:SI 1 "register_operand" "a")] 101))]
+-  ""
+-  "la\\t%0,0(%1)"
+-  [(set_attr "op_type"  "RX")
+-   (set_attr "atype"    "mem")
+-   (set_attr "type"     "la")])
+-
+ (define_insn "addsi3"
+   [(set (match_operand:SI 0 "register_operand" "=d,d,d")
+         (plus:SI (match_operand:SI 1 "register_operand" "%0,0,0")
+@@ -3016,10 +2971,11 @@
+    (set_attr "atype"    "reg,reg,mem")
+    (set_attr "type"     "set")])
+ 
+-(define_insn "do_la"
++(define_insn "*do_la"
+   [(set (match_operand:SI 0 "register_operand" "=a")
+         (match_operand:QI 1 "address_operand" "p"))]
+-  "volatile_ok"
++  "reload_in_progress || reload_completed
++   || legitimate_la_operand_p (operands[1])"
+   "la\\t%0,%a1"
+   [(set_attr "op_type"  "RX")
+    (set_attr "atype"    "mem")
+@@ -3029,7 +2985,7 @@
+   [(set (match_operand:SI 0 "register_operand" "=d")
+         (plus:SI (match_operand:SI 1 "register_operand" "%0")
+                  (match_operand:SI 2 "register_operand" "d")))]
+-  ""
++  "reload_in_progress || reload_completed"
+   "brxle\\t%0,%2,.+4"
+   [(set_attr "op_type" "RSI")
+    (set_attr "atype"   "reg")
+diff -urN gcc-2.95.3/gcc/configure gcc-2.95.3-s390/gcc/configure
+--- gcc-2.95.3/gcc/configure	Wed Oct 10 19:03:19 2001
++++ gcc-2.95.3-s390/gcc/configure	Thu Sep  6 22:40:22 2001
+@@ -5889,7 +5889,7 @@
+ if test x$enable_haifa = x
+ then
+   case $target in
+-    alpha*-* | hppa*-* | powerpc*-* | rs6000-* | *sparc*-* | m32r*-*)
++    alpha*-* | hppa*-* | powerpc*-* | rs6000-* | s390*-* | *sparc*-* | m32r*-*)
+       enable_haifa=yes;;
+   esac
+ fi
+diff -urN gcc-2.95.3/gcc/configure.in gcc-2.95.3-s390/gcc/configure.in
+--- gcc-2.95.3/gcc/configure.in	Wed Oct 10 19:03:19 2001
++++ gcc-2.95.3-s390/gcc/configure.in	Thu Sep  6 22:40:22 2001
+@@ -3585,7 +3585,7 @@
+ if test x$enable_haifa = x
+ then
+   case $target in
+-    alpha*-* | hppa*-* | powerpc*-* | rs6000-* | *sparc*-* | m32r*-*)
++    alpha*-* | hppa*-* | powerpc*-* | rs6000-* | s390*-* | *sparc*-* | m32r*-*)
+       enable_haifa=yes;;
+   esac
+ fi
+diff -urN gcc-2.95.3/gcc/dbxout.c gcc-2.95.3-s390/gcc/dbxout.c
+--- gcc-2.95.3/gcc/dbxout.c	Sun Apr 18 15:09:24 1999
++++ gcc-2.95.3-s390/gcc/dbxout.c	Mon Oct  8 19:50:15 2001
+@@ -1994,6 +1994,15 @@
+       alter_subreg (home);
+     }
+ 
++  /* Similarly, if a variable was optimized completely
++     into a constant from the constant pool, do not
++     mention it.  */
++  if (GET_CODE (home) == MEM
++      && GET_CODE (XEXP (home, 0)) == SYMBOL_REF
++      && CONSTANT_POOL_ADDRESS_P (XEXP (home, 0)))
++    return;
++
++    
+   /* The kind-of-variable letter depends on where
+      the variable is and on the scope of its name:
+      G and N_GSYM for static storage and global scope,
+diff -urN gcc-2.95.3/gcc/regmove.c gcc-2.95.3-s390/gcc/regmove.c
+--- gcc-2.95.3/gcc/regmove.c	Tue Oct 12 07:44:39 1999
++++ gcc-2.95.3-s390/gcc/regmove.c	Tue Oct  2 19:59:17 2001
+@@ -701,6 +701,13 @@
+   if (MEM_VOLATILE_P (SET_SRC (set)))
+     return;
+ 
++  /* If there is a REG_EQUIV note in the the insn, the replacement
++     is not valid, since the register maybe in an other mode than 
++     the memory location. */
++
++  if (find_reg_note (p, REG_EQUIV, 0))
++    return;
++
+   /* Do not use a SUBREG to truncate from one mode to another if truncation
+      is not a nop.  */
+   if (GET_MODE_BITSIZE (GET_MODE (src_reg)) <= GET_MODE_BITSIZE (GET_MODE (src))

@@ -1,0 +1,9 @@
+--- libstdc++/config/linux.ml.jj	Sun Aug 30 17:18:46 1998
++++ libstdc++/config/linux.ml	Mon Sep  8 08:57:27 2003
+@@ -7,5 +7,5 @@ MSHLINK = libstdc++$(LIBC_INTERFACE)$(CX
+ 
+ LIBS    = $(ARLIB) marlink $(ARLINK) $(SHLIB) mshlink $(SHLINK)
+ SHFLAGS = -Wl,-soname,$(MSHLINK)
+-SHDEPS  = -lm
++SHDEPS  = -lm `gcc $(CFLAGS) $(CPPFLAGS) -print-file-name=libgcc_s.so`
+ DEPLIBS = ../$(SHLIB)

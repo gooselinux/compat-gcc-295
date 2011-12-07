@@ -1,0 +1,13 @@
+--- gcc-2.95.3/gcc/cccp.c.undef	Wed Oct 24 13:14:59 2001
++++ gcc-2.95.3/gcc/cccp.c	Wed Oct 24 13:16:41 2001
+@@ -1459,6 +1459,10 @@
+ 	}
+ 	break;
+ 
++      case 'u':
++	if (!strcmp (argv[i], "-undef"))
++	  break;
++
+       case 'l':
+ 	if (! strcmp (argv[i], "-lang-c"))
+ 	  cplusplus = 0, cplusplus_comments = 1, c89 = 0, c9x = 1, objc = 0;

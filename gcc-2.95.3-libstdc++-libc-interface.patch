@@ -1,0 +1,11 @@
+--- config.if.jj	Thu May  4 15:27:33 2000
++++ config.if	Wed Mar  6 12:45:16 2002
+@@ -85,6 +85,8 @@ EOF
+       # Cross compiling. Assume glibc 2.1.
+       libc_interface=-libc6.1-
+     fi
++    # Hardcode glibc 2.2 for 2.96-RH
++    libc_interface=-libc6.2-
+     ;;
+   *)
+     libc_interface=-

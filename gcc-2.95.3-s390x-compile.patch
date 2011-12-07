@@ -1,0 +1,46 @@
+--- gcc/config/s390/s390.h.jj	2006-08-17 16:47:03.000000000 -0400
++++ gcc/config/s390/s390.h	2006-08-17 17:19:12.000000000 -0400
+@@ -1839,4 +1839,43 @@ extern int s390_pool_overflow;
+   goto WIN;								\
+ }
+ 
++extern void init_cumulative_args ();
++extern void s390_va_start ();
++extern int consttable_operand ();
++extern int fp_operand ();
++extern int s_operand ();
++extern int r_or_im8_operand ();
++extern int r_or_s_operand (); 
++extern int r_or_s_or_im8_operand ();
++extern int r_or_x_or_im16_operand ();
++extern int bras_sym_operand ();
++extern int dead_p ();
++extern int legitimate_la_operand_p ();
++extern int legitimate_pic_operand_p ();
++extern int legitimate_constant_p ();
++extern int unsigned_comparison_operator ();
++extern int unsigned_jump_follows_p ();
++extern void update_cc ();
++extern void s390_initialize_trampoline ();
++extern void s390_output_symbolic_const ();
++extern int s390_adjust_cost ();
++extern void s390_expand_eh_epilogue ();
++extern void s390_asm_output_external_libcall ();
++extern void s390_function_arg_advance ();
++extern int s390_function_arg_partial_nregs ();
++extern int s390_function_arg_pass_by_reference ();
++extern void setup_incoming_varargs ();
++struct rtx_def;
++extern struct rtx_def *s390_va_arg ();
++extern struct rtx_def *s390_function_arg ();
++extern struct rtx_def *legitimize_address ();
++union tree_node;
++extern union tree_node *s390_build_va_list ();
++extern void encode_section_info ();
++extern void s390_trampoline_template ();
++extern int s390_function_prologue ();
++extern int s390_function_epilogue ();
++extern void s390_final_chunkify ();
++extern int s390_arg_frame_offset ();
++
+ #endif 

@@ -1,0 +1,117 @@
+--- gcc-2.95.x/gcc/crtstuff.c   2001/04/03 10:34:32     1.18.4.1
++++ gcc-2.95.x/gcc/crtstuff.c   2001/08/09 06:56:33
+@@ -55,6 +55,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "defaults.h"
+ #include <stddef.h>
+ #include "frame.h"
++#include "auto-host.h"
+ 
+ #ifndef CRT_CALL_STATIC_FUNCTION
+ # define CRT_CALL_STATIC_FUNCTION(func) func ()
+@@ -138,6 +139,28 @@ typedef void (*func_ptr) (void);
+ #ifdef INIT_SECTION_ASM_OP
+ 
+ #ifdef OBJECT_FORMAT_ELF
++/* Declare the __dso_handle variable.  It should have a unique value
++   in every shared-object; in a main program its value is zero.  The
++   object should in any case be protected.  This means the instance
++   in one DSO or the main program is not used in another object.  The
++   dynamic linker takes care of this.  */
++
++/* XXX Ideally the following should be implemented using
++   __attribute__ ((__visibility__ ("hidden")))
++   but the __attribute__ support is not yet there.  */
++#ifdef HAVE_GAS_HIDDEN
++asm (".hidden\t__dso_handle");
++#endif
++
++#ifdef CRTSTUFFS_O
++void *__dso_handle = &__dso_handle;
++#else
++void *__dso_handle = 0;
++#endif
++
++/* The __cxa_finalize function may not be available so we use only a
++   weak declaration.  */
++extern void __cxa_finalize (void *) TARGET_ATTRIBUTE_WEAK;
+ 
+ /* Run all the global destructors on exit from the program.  */
+  
+@@ -169,6 +192,11 @@ __do_global_dtors_aux (void)
+   if (completed)
+     return;
+ 
++#ifdef CRTSTUFFS_O
++  if (__cxa_finalize)
++    __cxa_finalize (__dso_handle);
++#endif
++
+   while (*p)
+     {
+       p++;
+--- gcc-2.95.x/gcc/configure.in.jj      Wed Oct 13 09:58:02 1999
++++ gcc-2.95.x/gcc/configure.in Mon Aug 13 11:11:39 2001
+@@ -4087,6 +4087,21 @@ EOF
+ fi
+ AC_MSG_RESULT($gcc_cv_as_subsections)
+ 
++AC_MSG_CHECKING(assembler hidden support)
++gcc_cv_as_hidden=
++if test x$gcc_cv_as != x; then
++       # Check if we have .hidden
++       echo "  .hidden foobar" > conftest.s
++       echo "foobar:" >> conftest.s
++       if $gcc_cv_as -o conftest.o conftest.s > /dev/null 2>&1; then
++               AC_DEFINE(HAVE_GAS_HIDDEN, 1,
++                       [Define if your assembler supports .hidden.])
++               gcc_cv_as_hidden="yes"
++       fi
++       rm -f conftest.s conftest.o conftest.nm1 conftest.nm2
++fi
++AC_MSG_RESULT($gcc_cv_as_hidden)
++
+ AC_MSG_CHECKING(assembler instructions)
+ gcc_cv_as_instructions=
+ if test x$gcc_cv_as != x; then
+--- gcc-2.95.x/gcc/config.in.jj     Mon Oct 25 10:02:08 1999
++++ gcc-2.95.x/gcc/config.in        Wed Jun 13 12:45:56 2001
+@@ -34,6 +34,9 @@
+    emitting at the beginning of your section */
+ #undef HAVE_GAS_SUBSECTION_ORDERING
+ 
++/* Define if your assembler supports .hidden. */
++#undef HAVE_GAS_HIDDEN
++
+ /* Define if your assembler uses the old HImode fild and fist notation.  */
+ #undef HAVE_GAS_FILDS_FISTS
+ 
+--- gcc-2.95.x/gcc/configure.jj	2003-11-06 16:54:55.000000000 -0500
++++ gcc-2.95.x/gcc/configure	2003-11-06 16:56:18.000000000 -0500
+@@ -8250,8 +8250,26 @@ EOF
+ fi
+ echo "$ac_t""$gcc_cv_as_subsections" 1>&6
+ 
++echo $ac_n "checking assembler hidden support""... $ac_c" 1>&6
++echo "configure:8268: checking assembler hidden support" >&5
++gcc_cv_as_hidden=
++if test x$gcc_cv_as != x; then
++       # Check if we have .hidden
++       echo "  .hidden foobar" > conftest.s
++       echo "foobar:" >> conftest.s
++       if $gcc_cv_as -o conftest.o conftest.s > /dev/null 2>&1; then
++               cat >> confdefs.h <<\EOF
++#define HAVE_GAS_HIDDEN 1
++EOF
++
++               gcc_cv_as_hidden="yes"
++       fi
++       rm -f conftest.s conftest.o conftest.nm1 conftest.nm2
++fi
++echo "$ac_t""$gcc_cv_as_hidden" 1>&6
++
+ echo $ac_n "checking assembler instructions""... $ac_c" 1>&6
+-echo "configure:8234: checking assembler instructions" >&5
++echo "configure:8234: checking assembler instructions" >&5
+ gcc_cv_as_instructions=
+ if test x$gcc_cv_as != x; then
+ 	set "filds fists" "filds mem; fists mem"
